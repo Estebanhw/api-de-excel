@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Procesador de Excel</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:40px auto;padding:0 16px}
+    .card{border:1px solid #ddd;padding:20px;border-radius:8px}
+    input[type=file]{display:block;margin:12px 0}
+    .btn{padding:8px 14px;border-radius:6px;border:0;background:#0b74de;color:#fff;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:default}
+    pre{background:#f7f7f7;padding:10px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h1>Procesador de Excel</h1>
+  <div class="card">
+    <p>Selecciona un archivo Excel (.xlsx/.xls) y pulsa <strong>Procesar</strong>.</p>
+    <input id="file" type="file" accept=".xlsx,.xls" />
+    <div style="margin:12px 0">
+      <button id="go" class="btn">Procesar</button>
+      <span id="status" style="margin-left:12px"></span>
+    </div>
+    <div id="result" style="margin-top:12px"></div>
+    <hr />
+    <strong>Notas:</strong>
+    <ul>
+      <li>El backend debe estar en <code>http://127.0.0.1:8000</code>.</li>
+      <li>Si sirves este archivo desde otro puerto, el backend necesita CORS habilitado (ya se agregó).</li>
+    </ul>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file')
+    const btn = document.getElementById('go')
+    const status = document.getElementById('status')
+    const result = document.getElementById('result')
+    const URL = 'http://127.0.0.1:8000/process'
+
+    function setStatus(s){ status.textContent = s }
+
+    btn.addEventListener('click', async ()=>{
+      result.innerHTML = ''
+      const f = fileInput.files[0]
+      if(!f){ setStatus('Selecciona un archivo'); return }
+      setStatus('Subiendo...')
+      btn.disabled = true
+
+      try{
+        const form = new FormData()
+        form.append('file', f, f.name)
+        const res = await fetch(URL, {method:'POST', body: form})
+        if(!res.ok){
+          const txt = await res.text()
+          setStatus('Error: ' + res.status)
+          result.innerHTML = '<pre>'+escapeHtml(txt)+'</pre>'
+          btn.disabled = false
+          return
+        }
+
+        const blob = await res.blob()
+        const disposition = res.headers.get('Content-Disposition') || ''
+        const filenameMatch = /filename=([^;]+)/.exec(disposition)
+        const outName = filenameMatch ? filenameMatch[1].replace(/\"/g,'') : ('procesado_'+f.name)
+
+        // descargar automáticamente
+        const url = URLCreateObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = outName
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URLRevokeObjectURL(url)
+
+        setStatus('Listo — archivo descargado')
+        result.innerHTML = '<pre>Se descargó: '+outName+'</pre>'
+      }catch(err){
+        setStatus('Error: '+err.message)
+        result.innerHTML = '<pre>'+escapeHtml(String(err))+'</pre>'
+      }finally{
+        btn.disabled = false
+      }
+    })
+
+    // helpers (compatibilidad con algunos entornos donde createObjectURL está anidado)
+    function URLCreateObjectURL(b){ return (window.URL || window.webkitURL).createObjectURL(b) }
+    function URLRevokeObjectURL(u){ return (window.URL || window.webkitURL).revokeObjectURL(u) }
+    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+  </script>
+</body>
+</html>
